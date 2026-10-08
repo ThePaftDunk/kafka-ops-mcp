@@ -1,0 +1,8 @@
+{
+  "topics": [
+    {"name":"customers","partitions":[{"partition":0,"leader":1,"replicas":[1,2,3],"isr":[1,2,3]},{"partition":1,"leader":2,"replicas":[1,2,3],"isr":[1,2]}]},
+    {"name":"private-payments","partitions":[{"partition":0,"leader":1,"replicas":[1],"isr":[1]}]}
+  ],
+  "bounds": {"customers":[{"partition":0,"low":"0","high":"12000"},{"partition":1,"low":"9007199254740993","high":"9007199254741993"}]},
+  "groups": {"cdc-recovery-lab":{"customers":[{"partition":0,"offset":"11750"},{"partition":1,"offset":"9007199254741743"}]}}
+}

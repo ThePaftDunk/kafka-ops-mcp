@@ -1,0 +1,20 @@
+{
+  "name": "kafka-ops-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Read-only, allowlisted Kafka diagnostics for MCP clients",
+  "type": "module",
+  "engines": {"node": ">=20"},
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "demo": "npm run build && node dist/demo.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "kafkajs": "2.2.4",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {"@types/node": "22.10.2", "typescript": "5.9.3"}
+}
