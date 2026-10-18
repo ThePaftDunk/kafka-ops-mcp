@@ -2,6 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 test("real stdio MCP handshake, tool discovery, permissions and results", async () => {
   const client = new Client({ name: "integration-test", version: "1.0.0" });
   await client.connect(new StdioClientTransport({ command: process.execPath, args: ["dist/server.js"], env: { KAFKA_MODE: "fixture" } }));
@@ -18,4 +21,33 @@ test("real stdio MCP handshake, tool discovery, permissions and results", async 
     const invalid = await client.callTool({ name: "consumer_lag", arguments: { topic: "customers" } });
     assert.equal(invalid.isError, true);
   } finally { await client.close(); }
+});
+test("stdio tools preserve unmatched partition evidence and withhold the total", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "kafka-ops-unmatched-"));
+  const client = new Client({ name: "partition-observation-test", version: "1.0.0" });
+  try {
+    const fixture = JSON.parse(await readFile("fixtures/cluster.json", "utf8"));
+    fixture.groups["cdc-recovery-lab"].customers.push({ partition: 7, offset: "9007199254741993" });
+    const path = join(directory, "cluster.json");
+    await writeFile(path, JSON.stringify(fixture));
+    await client.connect(new StdioClientTransport({ command: process.execPath, args: ["dist/server.js"], env: { KAFKA_MODE: "fixture", KAFKA_FIXTURE: path } }));
+    for (const name of ["consumer_lag", "recovery_plan"]) {
+      const reply = await client.callTool({ name, arguments: { group: "cdc-recovery-lab", topic: "customers" } });
+      assert.equal(reply.isError, undefined);
+      const content = reply.content as { type: string; text: string }[];
+      const body = JSON.parse(content[0]!.text);
+      assert.equal(body.mode, "fixture");
+      assert.equal(body.result.complete, false);
+      assert.equal(body.result.totalLag, null);
+      assert.equal(body.result.knownPartitionLag, "500");
+      assert.deepEqual(body.result.unobservedCommittedPartitions, [{ partition: 7, committedOffset: "9007199254741993" }]);
+      if (name === "recovery_plan") {
+        assert.ok(body.result.warnings.some((warning: string) => warning.includes("without observed bounds: 7")));
+        assert.deepEqual(body.result.automaticActions, []);
+      }
+    }
+  } finally {
+    await client.close();
+    await rm(directory, { recursive: true, force: true });
+  }
 });

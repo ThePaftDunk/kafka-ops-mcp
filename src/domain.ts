@@ -23,10 +23,22 @@ function offset(value: string): bigint {
   if (!/^\d+$/.test(value)) throw new Error("Broker returned an invalid offset");
   return BigInt(value);
 }
+function validatePartition(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0) throw new Error("Broker returned an invalid partition identity");
+}
 export function calculateLag(bounds: Bounds[], commits: Committed[]) {
   if (!bounds.length) throw new Error("Topic has no observable partitions");
+  for (const value of bounds) validatePartition(value.partition);
+  for (const value of commits) {
+    validatePartition(value.partition);
+    if (value.offset !== "-1") offset(value.offset);
+  }
   if (new Set(bounds.map(p => p.partition)).size !== bounds.length || new Set(commits.map(p => p.partition)).size !== commits.length) throw new Error("Duplicate partition metadata");
   const byPartition = new Map(commits.map(value => [value.partition, value.offset]));
+  const observedPartitions = new Set(bounds.map(value => value.partition));
+  const unobservedCommittedPartitions = commits.filter(value => !observedPartitions.has(value.partition))
+    .map(value => ({ partition: value.partition, committedOffset: value.offset === "-1" ? null : offset(value.offset).toString() }))
+    .sort((left, right) => left.partition - right.partition);
   const partitions = bounds.map(value => {
     const low = offset(value.low), high = offset(value.high);
     if (high < low) throw new Error("Broker offset bounds are inconsistent");
@@ -39,8 +51,8 @@ export function calculateLag(bounds: Bounds[], commits: Committed[]) {
     return { ...base, committedOffset: next.toString(), lag: (high-next).toString(), status: "ok" as const };
   });
   const knownTotal = partitions.reduce((sum, item) => sum + BigInt(item.lag ?? "0"), 0n);
-  const complete = partitions.every(item => item.status === "ok");
-  return { partitions, totalLag: complete ? knownTotal.toString() : null, knownPartitionLag: knownTotal.toString(), complete, units: "offset distance; may differ from record count on compacted/transactional topics" };
+  const complete = unobservedCommittedPartitions.length === 0 && partitions.every(item => item.status === "ok");
+  return { partitions, unobservedCommittedPartitions, totalLag: complete ? knownTotal.toString() : null, knownPartitionLag: knownTotal.toString(), complete, units: "offset distance; may differ from record count on compacted/transactional topics" };
 }
 export class Diagnostics {
   constructor(readonly inspector: Inspector, readonly policy: AccessPolicy) {}
@@ -55,11 +67,15 @@ export class Diagnostics {
   }
   async recoveryPlan(group: string, topic: string) {
     const lag = await this.lag(group, topic);
-    const warnings = lag.partitions.filter(p => p.status !== "ok").map(p => `Partition ${p.partition}: ${p.status}`);
+    const partitionWarnings = lag.partitions.filter(p => p.status !== "ok").map(p => `Partition ${p.partition}: ${p.status}`);
+    const unmatched = lag.unobservedCommittedPartitions;
+    const warnings = [...partitionWarnings, ...(unmatched.length
+      ? [`Committed offsets reference partitions without observed bounds: ${unmatched.map(p => p.partition).join(", ")}.`] : [])];
     return { ...lag, warnings, steps: [
       "Compare the sink's durable checkpoint with the Kafka committed next offset before changing anything.",
       "Check consumer assignment, recent failures and sink availability; high lag alone does not establish the root cause.",
-      ...(warnings.length ? ["Investigate retention/truncation or missing commits. A fresh snapshot may be required; do not blindly reset offsets."] : ["Measure lag over time and verify throughput before deciding whether to scale consumers."]),
+      ...(unmatched.length ? ["Re-read topic metadata, bounds and commits; verify topic identity and the partition set before interpreting lag. Unmatched reads alone do not prove retention loss or corruption."] : []),
+      ...(partitionWarnings.length ? ["Investigate retention/truncation or missing commits. A fresh snapshot may be required; do not blindly reset offsets."] : unmatched.length ? [] : ["Measure lag over time and verify throughput before deciding whether to scale consumers."]),
       "Rehearse recovery in a separate environment and verify target idempotency. This tool performs no recovery actions."
     ], automaticActions: [] };
   }

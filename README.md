@@ -40,6 +40,8 @@ flowchart LR
 
 Offsets are JSON strings and calculations use `BigInt`. Missing commits, commits below retention, and commits ahead of the log end produce explicit statuses and a null total; they are never silently clamped into a healthy zero. Lag means offset distance, which may differ from actual record count on compacted or transactional topics. Bounds and commits are separate reads, so outputs identify the observation time and do not claim a consistent broker snapshot.
 
+Committed offsets can also reference partitions absent from the bounds read. Those entries appear in `unobservedCommittedPartitions`, sorted by partition ID, with exact string offsets (or null for the `-1` uncommitted sentinel). They make `complete` false and `totalLag` null; `knownPartitionLag` remains only the subtotal for comparable partitions. The recovery tool recommends re-reading metadata, bounds and commits and checking topic identity. A mismatch alone is not treated as evidence of retention loss or a reason to reset offsets. A matching partition set still does not establish an atomic snapshot.
+
 ## Use with an MCP host
 
 First run `npm run build`. Configure your host's stdio server entry with absolute paths:
@@ -75,6 +77,6 @@ Grant only broker permissions needed to describe the permitted topics/groups and
 
 ## Validation and scope
 
-Six tests cover exact large offsets, missing commits, retention/truncation, invalid/duplicate metadata, policy enforcement before broker calls, and the actual MCP stdio lifecycle with discovery, allow/deny calls and malformed arguments. The fixture/client demo is validated locally; the live Kafka adapter compiles but requires integration validation against your broker/auth configuration.
+Twelve tests cover exact large offsets, missing commits, retention/truncation, invalid/duplicate metadata, unmatched partition observations, policy enforcement before broker calls, and the actual MCP stdio lifecycle with discovery, allow/deny calls and malformed arguments. The mismatch is also exercised through both `consumer_lag` and `recovery_plan` using a real SDK client and separate server process. The fixture/client demo is validated locally; the live Kafka adapter compiles but requires integration validation against your broker/auth configuration.
 
-There is no hosted HTTP transport, multi-user authentication, Vault rotation loop, historical lag storage, automatic repair, or arbitrary cluster command tool. This narrow scope keeps the AI client useful without giving it operational write capabilities. See [the ADR](docs/adr.md).
+There is no hosted HTTP transport, multi-user authentication, Vault rotation loop, historical lag storage, automatic repair, or arbitrary cluster command tool. This narrow scope keeps the AI client useful without giving it operational write capabilities. See [the ADR](docs/adr.md) and [the partition-observation walkthrough](docs/development-2026-10-18.md).
