@@ -27,7 +27,7 @@ async function reply(action: () => Promise<unknown>) {
 }
 server.registerTool("list_topics", { description: "List accessible topic names within the explicit allowlist. No messages are read.", inputSchema: {}, annotations }, () => reply(() => diagnostics.topics()));
 server.registerTool("describe_topic", { description: "Read partition leaders, replicas and ISR for an allowlisted topic.", inputSchema: { topic: name }, annotations }, ({ topic }) => reply(() => diagnostics.describe(topic)));
-server.registerTool("consumer_lag", { description: "Measure offset distance per partition with exact integer arithmetic. Missing commits and retention loss are explicit; no offsets are changed.", inputSchema: { group: name, topic: name }, annotations }, ({ group, topic }) => reply(() => diagnostics.lag(group, topic)));
+server.registerTool("consumer_lag", { description: "Measure offset distance per partition with exact integer arithmetic. Missing commits, retention loss and unmatched partition reads are explicit; no offsets are changed.", inputSchema: { group: name, topic: name }, annotations }, ({ group, topic }) => reply(() => diagnostics.lag(group, topic)));
 server.registerTool("recovery_plan", { description: "Generate conservative diagnostic steps from observed offsets. This is guidance, not a diagnosis or an action; it cannot reset offsets.", inputSchema: { group: name, topic: name }, annotations }, ({ group, topic }) => reply(() => diagnostics.recoveryPlan(group, topic)));
 await server.connect(new StdioServerTransport());
 let closing = false;
