@@ -16,6 +16,20 @@ npm run demo
 
 The demo spawns the server, negotiates the MCP stdio protocol, discovers four tools, and calls them against a synthetic fixture. No AI subscription, API key, or live Kafka cluster is needed. The default fixture produces lag `250 + 250 = 500`, including offsets above JavaScript's safe integer range. An unlisted private topic is hidden and direct access is denied.
 
+## Run the disposable live-broker checks
+
+Requires a running Docker engine, JDK 21+ (`keytool` on PATH), and the installed npm dependencies:
+
+```sh
+npm run test:live
+```
+
+For a dedicated Colima profile, start that profile and select its Docker context for the command, for example `DOCKER_CONTEXT=colima-portfolio-lab npm run test:live`. The harness does not create or start a Docker VM itself.
+
+The harness starts one Apache Kafka 4.0.2 broker pinned by image digest, publishes one random loopback port, generates short-lived TLS material and SASL/PLAIN passwords, and seeds synthetic topics/offsets as a separate bootstrap administrator. The MCP server connects as a reader with only topic/group `Describe` ACLs. Thirteen checks cover real metadata and lag, missing commits, application policy, redacted broker ACL denials, rejected writes/resets, unchanged state after denial, invalid credentials and TLS trust refusal. The harness removes its container, volumes and generated credentials on completion, failure or a handled termination signal. Downloaded image layers remain cached in Docker.
+
+The live CI job runs the same command on Ubuntu with Node.js 22 and JDK 21. This is a disposable single-broker compatibility/security test, not a production deployment or a credential-rotation test. See [the test decision](docs/adr-live-broker-validation.md) and [the observed run](docs/development-2026-10-24.md).
+
 ## Tools
 
 | Tool | Input | Output |
@@ -75,6 +89,6 @@ Grant only broker permissions needed to describe the permitted topics/groups and
 
 ## Validation and scope
 
-Six tests cover exact large offsets, missing commits, retention/truncation, invalid/duplicate metadata, policy enforcement before broker calls, and the actual MCP stdio lifecycle with discovery, allow/deny calls and malformed arguments. The fixture/client demo is validated locally; the live Kafka adapter compiles but requires integration validation against your broker/auth configuration.
+Six default tests cover exact large offsets, missing commits, retention/truncation, invalid/duplicate metadata, policy enforcement before broker calls, and the actual MCP stdio lifecycle with discovery, allow/deny calls and malformed arguments. The separate live suite passes thirteen checks against the pinned broker with SASL/PLAIN, generated TLS and least-privilege ACLs. SCRAM, deployment-specific certificate chains, credential rotation, multiple brokers and rebalances still need their own integration validation. The partition-observation fix is a separate pending PR.
 
 There is no hosted HTTP transport, multi-user authentication, Vault rotation loop, historical lag storage, automatic repair, or arbitrary cluster command tool. This narrow scope keeps the AI client useful without giving it operational write capabilities. See [the ADR](docs/adr.md).

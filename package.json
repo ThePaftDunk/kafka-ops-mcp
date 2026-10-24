@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "test": "npm run build && node --test dist/test/*.test.js",
+    "test:live": "npm run build && node scripts/live-integration.mjs",
     "demo": "npm run build && node dist/demo.js"
   },
   "dependencies": {
